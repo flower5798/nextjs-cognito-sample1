@@ -212,21 +212,46 @@ COGNITO_USER_POOL_CLIENT_SECRET=...
    - **Build output directory**: `.vercel/output/static`
    - **Root directory**: `/`（プロジェクトルート）
 
-4. **環境変数の設定**
-   Cloudflare Pagesのダッシュボードで以下の環境変数を設定：
-   ```
-   NEXT_PUBLIC_COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxxx
-   NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
-   NEXT_PUBLIC_COGNITO_REGION=ap-northeast-1
-   COGNITO_USER_POOL_CLIENT_ID_SERVER=yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy（オプション）
-   COGNITO_USER_POOL_CLIENT_SECRET=your-secret-key-here（オプション）
-   ```
+4. **互換性フラグの設定（重要）**
+   Cloudflare Pagesのダッシュボードで以下の手順を実行：
+   - プロジェクトの「Settings」→「Functions」セクションを開く
+   - 「Compatibility flags」セクションを開く
+   - 「Production」と「Preview」の両方に`nodejs_compat`を追加
+   - 「Save」をクリック
+   
+   **注意**: この設定がないと、デプロイ後に「no nodejs_compat compatibility flag set」エラーが発生します。
 
+5. **環境変数の設定（重要）**
+   
+   Cloudflare Pagesのダッシュボードで以下の手順を実行：
+   
+   a. プロジェクトの「Settings」→「Variables and Secrets」を開く
+   
+   b. 「Environment Variables」セクションで、以下の環境変数を追加：
+   
+   **Production環境とPreview環境の両方に設定してください**
+   
+   | 環境変数名 | 値の例 | 説明 |
+   |-----------|--------|------|
+   | `NEXT_PUBLIC_COGNITO_USER_POOL_ID` | `ap-northeast-1_xxxxxxxxx` | User Pool ID（必須） |
+   | `NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID` | `xxxxxxxxxxxxxxxxxxxxxxxxxx` | Public Client ID（必須） |
+   | `NEXT_PUBLIC_COGNITO_REGION` | `ap-northeast-1` | AWSリージョン（必須） |
+   | `COGNITO_USER_POOL_CLIENT_ID_SERVER` | `yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy` | Confidential Client ID（オプション） |
+   | `COGNITO_USER_POOL_CLIENT_SECRET` | `your-secret-key-here` | Client Secret（オプション、Secretsとして設定） |
+   
+   c. **Secretsの設定**:
+   - `COGNITO_USER_POOL_CLIENT_SECRET`は「Secrets」セクションで設定してください
+   - 「Create secret」をクリック
+   - 名前: `COGNITO_USER_POOL_CLIENT_SECRET`
+   - 値を入力して保存
+   
    **重要**: 
-   - `NEXT_PUBLIC_`プレフィックス付きの環境変数はクライアントサイドでも利用可能
-   - `COGNITO_USER_POOL_CLIENT_SECRET`は`NEXT_PUBLIC_`プレフィックスを付けないでください（サーバーサイドのみ）
+   - `NEXT_PUBLIC_`プレフィックス付きの環境変数は「Environment Variables」で設定
+   - `COGNITO_USER_POOL_CLIENT_SECRET`は「Secrets」で設定（機密情報のため）
+   - ProductionとPreviewの両方の環境に設定してください
+   - `wrangler.toml`の`[vars]`セクションは使用しません（ダッシュボードの設定が優先されます）
 
-5. **デプロイ**
+6. **デプロイ**
    - 「Save and Deploy」をクリック
    - ビルドが完了すると、自動的にデプロイされます
 
