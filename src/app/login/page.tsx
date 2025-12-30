@@ -41,6 +41,14 @@ export default function LoginPage() {
     if (result.success) {
       router.push(redirectTo);
       router.refresh();
+    } else if (result.requiresNewPassword) {
+      // 初回ログイン時のパスワード変更が必要な場合
+      const changePasswordUrl = `/login/change-password?redirect=${encodeURIComponent(redirectTo)}`;
+      router.push(changePasswordUrl);
+    } else if (result.requiresMFA) {
+      // MFAが必要な場合（将来的にMFAページを実装する場合はここで遷移）
+      setError(result.error || 'MFA認証が必要です');
+      setLoading(false);
     } else {
       setError(result.error || 'ログインに失敗しました');
       setLoading(false);

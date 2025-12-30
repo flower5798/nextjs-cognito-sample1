@@ -1,5 +1,5 @@
 import { Amplify } from 'aws-amplify';
-import { signIn, signOut, getCurrentUser, fetchAuthSession } from 'aws-amplify/auth';
+import { signIn, signOut, getCurrentUser, fetchAuthSession, confirmSignIn } from 'aws-amplify/auth';
 import { getEnvConfig } from './env';
 
 // Amplifyの設定
@@ -119,10 +119,20 @@ const loginViaServerAPI = async (email: string, password: string) => {
   }
 };
 
+// ログイン結果の型定義
+export interface LoginResult {
+  success: boolean;
+  error?: string;
+  requiresNewPassword?: boolean;
+  requiresMFA?: boolean;
+  mfaType?: 'SMS' | 'TOTP';
+  nextStep?: any;
+}
+
 // ログイン関数
 // まずPublic Clientを使用してクライアントサイドで直接ログインを試みます
 // 失敗した場合（SECRET_HASHエラー、CSPエラーなど）は、自動的にサーバーサイドAPI経由でログインします
-export const login = async (email: string, password: string) => {
+export const login = async (email: string, password: string): Promise<LoginResult> => {
   try {
     // Public Client（シークレットなし）を使用してクライアントサイドで直接ログインを試みる
     const { isSignedIn, nextStep } = await signIn({
@@ -134,11 +144,34 @@ export const login = async (email: string, password: string) => {
       return { success: true };
     }
     
-    // MFAなどの追加ステップが必要な場合
-    if (nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED' || 
-        nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_CODE' ||
-        nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_TOTP_CODE') {
-      return { success: false, error: '追加の認証が必要です', nextStep };
+    // 初回ログイン時のパスワード変更が必要な場合
+    if (nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
+      return { 
+        success: false, 
+        requiresNewPassword: true,
+        nextStep 
+      };
+    }
+    
+    // MFAが必要な場合
+    if (nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_SMS_CODE') {
+      return { 
+        success: false, 
+        requiresMFA: true,
+        mfaType: 'SMS',
+        error: 'SMSで送信された確認コードを入力してください',
+        nextStep 
+      };
+    }
+    
+    if (nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_TOTP_CODE') {
+      return { 
+        success: false, 
+        requiresMFA: true,
+        mfaType: 'TOTP',
+        error: '認証アプリのコードを入力してください',
+        nextStep 
+      };
     }
     
     return { success: false, error: 'ログインに失敗しました' };
@@ -317,6 +350,51 @@ export const isAuthenticated = async (): Promise<boolean> => {
     return session.tokens !== undefined;
   } catch {
     return false;
+  }
+};
+
+/**
+ * 新しいパスワードを設定して認証を完了する
+ * 初回ログイン時のパスワード変更に使用
+ * @param newPassword - 新しいパスワード
+ */
+export const completeNewPassword = async (newPassword: string) => {
+  try {
+    // confirmSignInを使用して新しいパスワードを設定
+    const { isSignedIn, nextStep } = await confirmSignIn({
+      challengeResponse: newPassword,
+    });
+
+    if (isSignedIn) {
+      return { success: true };
+    }
+
+    // 追加のステップが必要な場合
+    if (nextStep) {
+      return { 
+        success: false, 
+        error: '追加の認証が必要です',
+        nextStep 
+      };
+    }
+
+    return { success: false, error: 'パスワードの変更に失敗しました' };
+  } catch (error: any) {
+    console.error('パスワード変更エラー:', error);
+    
+    // パスワードポリシーエラーの場合
+    if (error.name === 'InvalidPasswordException') {
+      return { 
+        success: false, 
+        error: 'パスワードがポリシーを満たしていません。8文字以上で、大文字・小文字・数字・記号を含めてください。' 
+      };
+    }
+    
+    // その他のエラー
+    return { 
+      success: false, 
+      error: error.message || 'パスワードの変更に失敗しました' 
+    };
   }
 };
 
