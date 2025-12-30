@@ -11,6 +11,7 @@ export default function Navbar({ onLogout }: NavbarProps) {
     <nav className="navbar">
       <div>
         <Link href="/dashboard">ダッシュボード</Link>
+        <Link href="/courses">コース一覧</Link>
         <Link href="/profile">プロフィール</Link>
       </div>
       <div>
