@@ -1,17 +1,28 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, FormEvent, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { login } from '@/lib/cognito';
 import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [redirectTo, setRedirectTo] = useState<string>('/dashboard');
+
+  // URLパラメータからリダイレクト先を取得（クライアントサイドでのみ実行）
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get('redirect');
+      if (redirect) {
+        setRedirectTo(redirect);
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -21,9 +32,7 @@ export default function LoginPage() {
     const result = await login(email, password);
 
     if (result.success) {
-      // リダイレクト先を取得（デフォルトは/dashboard）
-      const redirect = searchParams.get('redirect') || '/dashboard';
-      router.push(redirect);
+      router.push(redirectTo);
       router.refresh();
     } else {
       setError(result.error || 'ログインに失敗しました');

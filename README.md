@@ -184,6 +184,70 @@ COGNITO_USER_POOL_CLIENT_SECRET=...
 
 詳細は`SECURITY.md`を参照してください。
 
+## Cloudflare Pagesへのデプロイ
+
+このプロジェクトはCloudflare Pagesにデプロイできます。
+
+### 前提条件
+
+- Cloudflareアカウント
+- GitHubリポジトリ（またはGitLab/Bitbucket）
+
+### デプロイ手順
+
+1. **依存関係のインストール**
+   ```bash
+   npm install
+   ```
+
+2. **Cloudflare Pagesでのプロジェクト作成**
+   - Cloudflareダッシュボードにログイン
+   - 「Pages」→「Create a project」を選択
+   - GitHubリポジトリを接続
+   - プロジェクト名を設定
+
+3. **ビルド設定**
+   - **Framework preset**: Next.js
+   - **Build command**: `npm run build:cloudflare`
+   - **Build output directory**: `.vercel/output/static`
+   - **Root directory**: `/`（プロジェクトルート）
+
+4. **環境変数の設定**
+   Cloudflare Pagesのダッシュボードで以下の環境変数を設定：
+   ```
+   NEXT_PUBLIC_COGNITO_USER_POOL_ID=ap-northeast-1_xxxxxxxxx
+   NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
+   NEXT_PUBLIC_COGNITO_REGION=ap-northeast-1
+   COGNITO_USER_POOL_CLIENT_ID_SERVER=yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy（オプション）
+   COGNITO_USER_POOL_CLIENT_SECRET=your-secret-key-here（オプション）
+   ```
+
+   **重要**: 
+   - `NEXT_PUBLIC_`プレフィックス付きの環境変数はクライアントサイドでも利用可能
+   - `COGNITO_USER_POOL_CLIENT_SECRET`は`NEXT_PUBLIC_`プレフィックスを付けないでください（サーバーサイドのみ）
+
+5. **デプロイ**
+   - 「Save and Deploy」をクリック
+   - ビルドが完了すると、自動的にデプロイされます
+
+### ローカルでのビルド確認
+
+デプロイ前にローカルでビルドを確認できます：
+
+```bash
+# Cloudflare Pages用のビルド
+npm run build:cloudflare
+
+# ローカルでプレビュー（Wranglerが必要）
+npm run preview:cloudflare
+```
+
+### 注意事項
+
+- Cloudflare Pagesでは、Next.jsのAPI RoutesがCloudflare Pages Functionsとして動作します
+- 環境変数はCloudflare Pagesのダッシュボードで設定してください（`.env.local`は使用されません）
+- 本番環境では、必ず適切な環境変数を設定してください
+
 ## 注意事項
 
 - このサンプルは開発・学習目的で作成されています

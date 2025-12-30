@@ -1,7 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CognitoIdentityProviderClient, InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { getEnvConfig } from '@/lib/env';
-import crypto from 'crypto';
+
+// Cloudflare Pages用にEdge Runtimeを指定
+export const runtime = 'edge';
+
+/**
+ * HMAC-SHA256を計算する（Edge Runtime対応）
+ */
+async function createHmacSha256(secret: string, message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secret);
+  const messageData = encoder.encode(message);
+  
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', key, messageData);
+  const hashArray = Array.from(new Uint8Array(signature));
+  const hashBase64 = btoa(String.fromCharCode(...hashArray));
+  
+  return hashBase64;
+}
 
 /**
  * サーバーサイドAPI経由でのログイン
@@ -43,11 +68,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // CLIENT_SECRETを使用してHMAC-SHA256でシークレットハッシュを計算
+    // CLIENT_SECRETを使用してHMAC-SHA256でシークレットハッシュを計算（Edge Runtime対応）
     const message = email + serverClientId;
-    const hmac = crypto.createHmac('sha256', config.clientSecret);
-    hmac.update(message);
-    const secretHash = hmac.digest('base64');
+    const secretHash = await createHmacSha256(config.clientSecret, message);
 
     // Cognito Identity Provider Clientを作成
     const client = new CognitoIdentityProviderClient({

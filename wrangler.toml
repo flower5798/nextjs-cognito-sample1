@@ -1,0 +1,18 @@
+# Cloudflare Pages用の設定ファイル
+# このファイルはローカル開発用です
+# 本番環境の環境変数はCloudflare Pagesのダッシュボードで設定してください
+
+name = "nextjs-cognito-sample"
+compatibility_date = "2024-01-01"
+
+# 環境変数の例（実際の値はCloudflare Pagesのダッシュボードで設定）
+# [vars]
+# NEXT_PUBLIC_COGNITO_USER_POOL_ID = "your-user-pool-id"
+# NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID = "your-client-id"
+# NEXT_PUBLIC_COGNITO_REGION = "ap-northeast-1"
+# COGNITO_USER_POOL_CLIENT_ID_SERVER = "your-server-client-id"
+# COGNITO_USER_POOL_CLIENT_SECRET = "your-client-secret"
+
+# Pages用の設定
+pages_build_output_dir = ".vercel/output/static"
+
