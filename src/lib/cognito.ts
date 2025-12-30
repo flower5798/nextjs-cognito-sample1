@@ -56,6 +56,8 @@ const isAuthenticationError = (errorName: string, errorMessage: string): boolean
 const GENERIC_AUTH_ERROR = 'メールアドレスまたはパスワードが違います';
 
 // サーバーサイドAPI経由でログインする関数
+// トークンはHttpOnly Cookieとレスポンスの両方で返される
+// Amplifyのセッション管理との互換性のため、localStorageにも保存する
 const loginViaServerAPI = async (email: string, password: string) => {
   
   try {
@@ -64,23 +66,24 @@ const loginViaServerAPI = async (email: string, password: string) => {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // Cookieを受け取るために必要
       body: JSON.stringify({ email, password }),
     });
 
     const result = await response.json();
     
     if (result.success && result.tokens) {
-      // トークンをlocalStorageに保存（Amplifyが自動的に読み込む）
+      // Amplifyのセッション管理との互換性のため、localStorageにもトークンを保存
       if (typeof window !== 'undefined') {
         try {
           const config = getEnvConfig();
-          // Amplify v6では、トークンは自動的に管理されますが、
-          // サーバーサイドAPI経由の場合は手動で設定する必要があります
           const storageKey = `CognitoIdentityServiceProvider.${config.userPoolClientId}`;
           localStorage.setItem(`${storageKey}.LastAuthUser`, email);
           localStorage.setItem(`${storageKey}.${email}.accessToken`, result.tokens.accessToken);
           localStorage.setItem(`${storageKey}.${email}.idToken`, result.tokens.idToken);
-          localStorage.setItem(`${storageKey}.${email}.refreshToken`, result.tokens.refreshToken);
+          if (result.tokens.refreshToken) {
+            localStorage.setItem(`${storageKey}.${email}.refreshToken`, result.tokens.refreshToken);
+          }
           
           // トークンの有効期限を保存
           if (result.tokens.expiresIn) {
@@ -101,13 +104,14 @@ const loginViaServerAPI = async (email: string, password: string) => {
           console.error('トークンの保存に失敗しました:', storageError);
         }
       }
-      return { success: true, tokens: result.tokens };
+      return { success: true };
     }
     
     // サーバーからのエラーをそのまま返す（サーバー側で既にサニタイズ済み）
     return { success: false, error: result.error || 'ログインに失敗しました' };
-  } catch {
-    // ネットワークエラーなどの場合（詳細はログに出さない）
+  } catch (fetchError) {
+    // ネットワークエラーなどの場合
+    console.error('ログインAPIエラー:', fetchError);
     return { 
       success: false, 
       error: 'ログインに失敗しました。ネットワーク接続を確認してください。' 
@@ -117,7 +121,7 @@ const loginViaServerAPI = async (email: string, password: string) => {
 
 // ログイン関数
 // まずPublic Clientを使用してクライアントサイドで直接ログインを試みます
-// 失敗した場合（SECRET_HASHエラーなど）は、自動的にサーバーサイドAPI経由でログインします
+// 失敗した場合（SECRET_HASHエラー、CSPエラーなど）は、自動的にサーバーサイドAPI経由でログインします
 export const login = async (email: string, password: string) => {
   try {
     // Public Client（シークレットなし）を使用してクライアントサイドで直接ログインを試みる
@@ -145,39 +149,41 @@ export const login = async (email: string, password: string) => {
     const errorStack = error.stack || '';
     const fullErrorText = `${errorName} ${errorMessage} ${errorStack}`.toLowerCase();
     
-    // SECRET_HASHエラー（シークレット設定エラー）の場合、
-    // Confidential Clientを使用してサーバーサイドAPI経由でログインを試みる
-    const isSecretHashError = 
-      fullErrorText.includes('secret_hash') ||
-      fullErrorText.includes('configured with secret') ||
-      fullErrorText.includes('was not received') ||
-      (fullErrorText.includes('client') && fullErrorText.includes('secret') && !fullErrorText.includes('incorrect'));
-    
-    if (isSecretHashError) {
-      return await loginViaServerAPI(email, password);
-    }
-    
     // 認証エラー（パスワード間違い、ユーザー不存在など）の場合は汎用メッセージを返す
+    // これらのエラーはサーバーAPI経由でも同じ結果になるので、フォールバック不要
     if (isAuthenticationError(errorName, errorMessage)) {
       return { success: false, error: GENERIC_AUTH_ERROR };
     }
     
-    // その他のエラーも、Confidential Clientが設定されている場合はサーバーサイドAPI経由で試してみる
-    const config = getEnvConfig();
-    if (config.serverClientId && config.clientSecret) {
-      const serverResult = await loginViaServerAPI(email, password);
-      
-      // サーバーサイドAPI経由でも失敗した場合は、汎用エラーメッセージを返す
-      if (!serverResult.success) {
-        // サーバーからのエラーメッセージをそのまま使用（サーバー側で既にサニタイズ済み）
-        return serverResult;
-      }
-      
+    // SECRET_HASHエラー、ネットワークエラー、CSPエラーなど、
+    // クライアントサイドで解決できないエラーの場合はサーバーサイドAPI経由でログインを試みる
+    const isClientSideError = 
+      fullErrorText.includes('secret_hash') ||
+      fullErrorText.includes('configured with secret') ||
+      fullErrorText.includes('was not received') ||
+      fullErrorText.includes('network') ||
+      fullErrorText.includes('failed to fetch') ||
+      fullErrorText.includes('csp') ||
+      fullErrorText.includes('content security policy') ||
+      fullErrorText.includes('refused to connect') ||
+      (fullErrorText.includes('client') && fullErrorText.includes('secret') && !fullErrorText.includes('incorrect'));
+    
+    if (isClientSideError) {
+      console.log('クライアントサイド認証エラー、サーバーAPI経由でログインを試みます');
+      return await loginViaServerAPI(email, password);
+    }
+    
+    // その他のエラーもサーバーサイドAPI経由で試してみる
+    // （クライアントサイドでは環境変数が読めないため、常にフォールバックを試行）
+    console.log('Amplify認証エラー、サーバーAPI経由でログインを試みます:', errorName);
+    const serverResult = await loginViaServerAPI(email, password);
+    
+    if (serverResult.success) {
       return serverResult;
     }
     
-    // Confidential Clientが設定されていない場合は、汎用エラーメッセージを返す
-    return { success: false, error: 'ログインに失敗しました' };
+    // サーバーサイドAPI経由でも失敗した場合は、エラーメッセージを返す
+    return serverResult;
   }
 };
 
@@ -211,6 +217,16 @@ export const logout = async () => {
         });
       } catch (storageError) {
         console.error('ストレージのクリアに失敗しました:', storageError);
+      }
+      
+      // サーバーサイドのCookieも削除（HttpOnly Cookie対応）
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'include',
+        });
+      } catch (apiError) {
+        console.error('ログアウトAPIエラー:', apiError);
       }
     }
     

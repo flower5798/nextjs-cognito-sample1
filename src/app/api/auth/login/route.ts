@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CognitoIdentityProviderClient, InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { getEnvConfig } from '@/lib/env';
+import { setAuthCookies } from '@/lib/auth-cookies';
 
 // Cloudflare Pages用にEdge Runtimeを指定
 export const runtime = 'edge';
@@ -95,15 +96,30 @@ export async function POST(request: NextRequest) {
     const response = await client.send(command);
 
     if (response.AuthenticationResult) {
-      return NextResponse.json({
+      const tokens = {
+        accessToken: response.AuthenticationResult.AccessToken!,
+        refreshToken: response.AuthenticationResult.RefreshToken,
+        idToken: response.AuthenticationResult.IdToken!,
+        expiresIn: response.AuthenticationResult.ExpiresIn,
+      };
+      
+      // レスポンスを作成
+      // トークンはHttpOnly Cookieで管理されるが、
+      // Amplifyのセッション管理との互換性のためにレスポンスにもトークンを含める
+      const jsonResponse = NextResponse.json({
         success: true,
         tokens: {
-          accessToken: response.AuthenticationResult.AccessToken,
-          refreshToken: response.AuthenticationResult.RefreshToken,
-          idToken: response.AuthenticationResult.IdToken,
-          expiresIn: response.AuthenticationResult.ExpiresIn,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          idToken: tokens.idToken,
+          expiresIn: tokens.expiresIn,
         },
       });
+      
+      // HttpOnly Cookieにもトークンを設定（ミドルウェアでの認証用）
+      setAuthCookies(jsonResponse, tokens);
+      
+      return jsonResponse;
     } else {
       return NextResponse.json(
         { success: false, error: '認証に失敗しました' },

@@ -14,12 +14,19 @@ export default function LoginPage() {
   const [redirectTo, setRedirectTo] = useState<string>('/dashboard');
 
   // URLパラメータからリダイレクト先を取得（クライアントサイドでのみ実行）
+  // オープンリダイレクト脆弱性対策: 内部パスのみ許可
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const redirect = params.get('redirect');
-      if (redirect) {
-        setRedirectTo(redirect);
+      // セキュリティ対策: 相対パスのみ許可、外部URLへのリダイレクトを防止
+      if (redirect && redirect.startsWith('/') && !redirect.startsWith('//') && !redirect.includes('://')) {
+        // 許可されたパスのホワイトリスト
+        const allowedPaths = ['/dashboard', '/profile', '/admin'];
+        const isAllowed = allowedPaths.some(path => redirect === path || redirect.startsWith(path + '/'));
+        if (isAllowed) {
+          setRedirectTo(redirect);
+        }
       }
     }
   }, []);
