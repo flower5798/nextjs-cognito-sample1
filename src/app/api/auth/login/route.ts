@@ -55,15 +55,19 @@ export async function POST(request: NextRequest) {
     const serverClientId = config.serverClientId || config.userPoolClientId;
     
     if (!config.clientSecret) {
+      // 設定エラーの詳細はログにのみ記録（レスポンスには含めない）
+      console.error('設定エラー: CLIENT_SECRETが未設定');
       return NextResponse.json(
-        { success: false, error: 'CLIENT_SECRETが設定されていません。サーバーサイド用のConfidential Clientを設定してください。' },
+        { success: false, error: 'ログインに失敗しました' },
         { status: 500 }
       );
     }
 
     if (!serverClientId) {
+      // 設定エラーの詳細はログにのみ記録（レスポンスには含めない）
+      console.error('設定エラー: Server Client IDが未設定');
       return NextResponse.json(
-        { success: false, error: 'サーバーサイド用のClient IDが設定されていません。COGNITO_USER_POOL_CLIENT_ID_SERVERを設定してください。' },
+        { success: false, error: 'ログインに失敗しました' },
         { status: 500 }
       );
     }
@@ -107,9 +111,29 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error: any) {
-    console.error('ログインAPIエラー:', error);
+    // セキュリティ上の理由から、認証エラーは汎用的なメッセージに置き換える
+    // 具体的なエラー（パスワード間違い、ユーザー不存在など）を隠す
+    const errorName = error.name || '';
+    const isAuthError = 
+      errorName === 'NotAuthorizedException' ||
+      errorName === 'UserNotFoundException' ||
+      errorName === 'InvalidPasswordException' ||
+      errorName === 'UserNotConfirmedException';
+    
+    if (isAuthError) {
+      // 認証エラーはログに詳細を残さない（ユーザー列挙攻撃対策）
+      console.error('ログインAPIエラー: 認証失敗');
+      return NextResponse.json(
+        { success: false, error: 'メールアドレスまたはパスワードが違います' },
+        { status: 401 }
+      );
+    }
+    
+    // 認証以外のエラー（設定エラーなど）はエラー名のみログに記録
+    console.error('ログインAPIエラー:', errorName || 'UnknownError');
+    
     return NextResponse.json(
-      { success: false, error: error.message || 'ログインに失敗しました' },
+      { success: false, error: 'ログインに失敗しました' },
       { status: 500 }
     );
   }

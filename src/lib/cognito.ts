@@ -30,9 +30,33 @@ export const configureAmplify = () => {
   });
 };
 
+// 認証エラーかどうかを判定する関数
+const isAuthenticationError = (errorName: string, errorMessage: string): boolean => {
+  const authErrorNames = [
+    'NotAuthorizedException',
+    'UserNotFoundException', 
+    'InvalidPasswordException',
+    'UserNotConfirmedException'
+  ];
+  
+  const authErrorMessages = [
+    'incorrect username or password',
+    'user does not exist',
+    'password attempts exceeded',
+    'user is not confirmed'
+  ];
+  
+  const lowerMessage = errorMessage.toLowerCase();
+  
+  return authErrorNames.includes(errorName) ||
+         authErrorMessages.some(msg => lowerMessage.includes(msg));
+};
+
+// 汎用的な認証エラーメッセージ（セキュリティのため）
+const GENERIC_AUTH_ERROR = 'メールアドレスまたはパスワードが違います';
+
 // サーバーサイドAPI経由でログインする関数
 const loginViaServerAPI = async (email: string, password: string) => {
-  console.log('サーバーサイドAPI経由でログインを試みます...');
   
   try {
     const response = await fetch('/api/auth/login', {
@@ -80,12 +104,13 @@ const loginViaServerAPI = async (email: string, password: string) => {
       return { success: true, tokens: result.tokens };
     }
     
+    // サーバーからのエラーをそのまま返す（サーバー側で既にサニタイズ済み）
     return { success: false, error: result.error || 'ログインに失敗しました' };
-  } catch (apiError: any) {
-    console.error('サーバーサイドAPI経由のログインに失敗:', apiError);
+  } catch {
+    // ネットワークエラーなどの場合（詳細はログに出さない）
     return { 
       success: false, 
-      error: 'CLIENT_SECRETが設定されているため、サーバーサイドAPI経由でログインする必要があります。.env.localにCOGNITO_USER_POOL_CLIENT_SECRETを設定してください。または、User Pool ClientをPublic Client（シークレットなし）に変更してください。' 
+      error: 'ログインに失敗しました。ネットワーク接続を確認してください。' 
     };
   }
 };
@@ -114,49 +139,45 @@ export const login = async (email: string, password: string) => {
     
     return { success: false, error: 'ログインに失敗しました' };
   } catch (error: any) {
-    console.error('ログインエラー:', error);
-    
     // エラーメッセージ全体を取得（ネストされたエラーも含む）
     const errorMessage = error.message || error.toString() || '';
     const errorName = error.name || '';
     const errorStack = error.stack || '';
     const fullErrorText = `${errorName} ${errorMessage} ${errorStack}`.toLowerCase();
     
-    // SECRET_HASHエラーまたはNotAuthorizedException（シークレット設定エラー）の場合、
+    // SECRET_HASHエラー（シークレット設定エラー）の場合、
     // Confidential Clientを使用してサーバーサイドAPI経由でログインを試みる
     const isSecretHashError = 
       fullErrorText.includes('secret_hash') ||
-      fullErrorText.includes('secret') ||
-      fullErrorText.includes('notauthorizedexception') ||
       fullErrorText.includes('configured with secret') ||
       fullErrorText.includes('was not received') ||
-      fullErrorText.includes('client') && fullErrorText.includes('secret');
+      (fullErrorText.includes('client') && fullErrorText.includes('secret') && !fullErrorText.includes('incorrect'));
     
     if (isSecretHashError) {
-      console.log('CLIENT_SECRETが必要なエラーを検出。Confidential Clientを使用してサーバーサイドAPI経由でログインを試みます...');
-      console.log('エラー詳細:', { name: errorName, message: errorMessage });
-      
       return await loginViaServerAPI(email, password);
+    }
+    
+    // 認証エラー（パスワード間違い、ユーザー不存在など）の場合は汎用メッセージを返す
+    if (isAuthenticationError(errorName, errorMessage)) {
+      return { success: false, error: GENERIC_AUTH_ERROR };
     }
     
     // その他のエラーも、Confidential Clientが設定されている場合はサーバーサイドAPI経由で試してみる
     const config = getEnvConfig();
     if (config.serverClientId && config.clientSecret) {
-      console.log('クライアントサイドログインに失敗。Confidential Clientを使用してサーバーサイドAPI経由でログインを試みます...');
       const serverResult = await loginViaServerAPI(email, password);
       
-      // サーバーサイドAPI経由でも失敗した場合は、元のエラーメッセージを返す
+      // サーバーサイドAPI経由でも失敗した場合は、汎用エラーメッセージを返す
       if (!serverResult.success) {
-        const finalErrorMessage = errorMessage || 'ログインに失敗しました';
-        return { success: false, error: finalErrorMessage };
+        // サーバーからのエラーメッセージをそのまま使用（サーバー側で既にサニタイズ済み）
+        return serverResult;
       }
       
       return serverResult;
     }
     
-    // Confidential Clientが設定されていない場合は、元のエラーメッセージを返す
-    const finalErrorMessage = errorMessage || 'ログインに失敗しました';
-    return { success: false, error: finalErrorMessage };
+    // Confidential Clientが設定されていない場合は、汎用エラーメッセージを返す
+    return { success: false, error: 'ログインに失敗しました' };
   }
 };
 
