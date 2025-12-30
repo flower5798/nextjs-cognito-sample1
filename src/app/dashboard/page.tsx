@@ -147,38 +147,44 @@ export default function DashboardPage() {
           <div style={{ marginTop: '2rem' }}>
             <h2>権限に基づいた操作</h2>
             
-            <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              {/* 管理者権限が必要な操作 */}
-              <PermissionButton
-                requiredPermission="admin"
-                onClick={handleAdminAction}
-                disabledMessage="この操作には管理者権限が必要です"
-              >
-                管理者専用操作
-              </PermissionButton>
+            <div style={{ marginTop: '1rem' }}>
+              <h4>権限チェック方法の例</h4>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                {/* 例1: 定義済みの権限タイプを使用 */}
+                <PermissionButton
+                  requiredPermission="admin"
+                  onClick={handleAdminAction}
+                  disabledMessage="この操作には管理者権限が必要です"
+                >
+                  管理者専用操作
+                </PermissionButton>
 
-              {/* 編集権限が必要な操作 */}
-              <PermissionButton
-                requiredPermission="editor"
-                onClick={handleEditorAction}
-                disabledMessage="この操作には編集権限が必要です"
-              >
-                編集操作
-              </PermissionButton>
+                {/* 例2: カスタム権限名を使用 */}
+                <PermissionButton
+                  requiredPermissionName="editor"
+                  onClick={handleEditorAction}
+                  disabledMessage="この操作にはeditor権限（またはそれ以上の権限）が必要です"
+                >
+                  編集操作（カスタム権限名）
+                </PermissionButton>
 
-              {/* 削除操作（管理者のみ） */}
-              <PermissionButton
-                requiredPermission="admin"
-                onClick={handleDeleteAction}
-                className="btn btn-secondary"
-                disabledMessage="削除には管理者権限が必要です"
-              >
-                削除
-              </PermissionButton>
+                {/* 例3: グループ名を使用 */}
+                <PermissionButton
+                  requiredGroupName="admin"
+                  onClick={handleDeleteAction}
+                  className="btn btn-secondary"
+                  disabledMessage="削除にはadminグループ（またはそれ以上の権限）が必要です"
+                >
+                  削除（グループ名）
+                </PermissionButton>
+              </div>
             </div>
 
             {/* 権限に基づいたコンテンツ表示 */}
             <div style={{ marginTop: '2rem' }}>
+              <h3>権限チェックの例</h3>
+              
+              {/* 例1: 定義済みの権限タイプを使用 */}
               <ProtectedContent
                 requiredPermission="admin"
                 fallback={
@@ -188,7 +194,7 @@ export default function DashboardPage() {
                 }
               >
                 <div className="card" style={{ marginTop: '1rem', backgroundColor: '#e7f3ff' }}>
-                  <h3>管理者専用コンテンツ</h3>
+                  <h3>管理者専用コンテンツ（定義済み権限）</h3>
                   <p>このコンテンツは管理者のみが閲覧できます。</p>
                   <ul>
                     <li>システム設定の変更</li>
@@ -198,21 +204,98 @@ export default function DashboardPage() {
                 </div>
               </ProtectedContent>
 
+              {/* 例2: カスタム権限名を使用 */}
               <ProtectedContent
-                requiredPermission="editor"
+                requiredPermissionName="editor"
                 fallback={
                   <div className="card" style={{ marginTop: '1rem', backgroundColor: '#f8f9fa' }}>
-                    <p>編集者専用のコンテンツです。編集権限が必要です。</p>
+                    <p>編集者専用のコンテンツです。editor権限（またはそれ以上の権限）が必要です。</p>
                   </div>
                 }
               >
                 <div className="card" style={{ marginTop: '1rem', backgroundColor: '#fff3cd' }}>
-                  <h3>編集者専用コンテンツ</h3>
-                  <p>このコンテンツは編集者以上が閲覧できます。</p>
+                  <h3>編集者専用コンテンツ（カスタム権限名）</h3>
+                  <p>このコンテンツはeditor権限以上が閲覧できます。</p>
                   <ul>
                     <li>コンテンツの作成・編集</li>
                     <li>公開設定の変更</li>
                   </ul>
+                </div>
+              </ProtectedContent>
+
+              {/* 例3: グループ名を使用 */}
+              <ProtectedContent
+                requiredGroupName="viewer"
+                fallback={
+                  <div className="card" style={{ marginTop: '1rem', backgroundColor: '#f8f9fa' }}>
+                    <p>閲覧者専用のコンテンツです。viewerグループ（またはそれ以上の権限）が必要です。</p>
+                  </div>
+                }
+              >
+                <div className="card" style={{ marginTop: '1rem', backgroundColor: '#d1ecf1' }}>
+                  <h3>閲覧者専用コンテンツ（グループ名）</h3>
+                  <p>このコンテンツはviewerグループ以上が閲覧できます。</p>
+                  <ul>
+                    <li>コンテンツの閲覧</li>
+                    <li>レポートの確認</li>
+                  </ul>
+                </div>
+              </ProtectedContent>
+
+              {/* 例4: 複数の権限名のいずれか（OR条件） */}
+              <ProtectedContent
+                anyPermissionNames={['editor', 'admin']}
+                fallback={
+                  <div className="card" style={{ marginTop: '1rem', backgroundColor: '#f8f9fa' }}>
+                    <p>編集者または管理者専用のコンテンツです。editorまたはadmin権限が必要です。</p>
+                  </div>
+                }
+              >
+                <div className="card" style={{ marginTop: '1rem', backgroundColor: '#d4edda' }}>
+                  <h3>編集者または管理者専用コンテンツ（複数権限 - OR条件）</h3>
+                  <p>このコンテンツはeditorまたはadmin権限が閲覧できます。</p>
+                  <ul>
+                    <li>コンテンツ管理</li>
+                    <li>設定変更</li>
+                  </ul>
+                </div>
+              </ProtectedContent>
+
+              {/* 例5: 複数の権限名をすべて持っている（AND条件）+ より高い権限も許可 */}
+              <ProtectedContent
+                allPermissionNames={['editor', 'content-manager']}
+                higherPermission="admin"
+                fallback={
+                  <div className="card" style={{ marginTop: '1rem', backgroundColor: '#f8f9fa' }}>
+                    <p>
+                      editor権限<strong>かつ</strong>content-managerグループに属しているか、
+                      またはadmin権限が必要です。
+                    </p>
+                    <p style={{ fontSize: '0.875rem', color: '#6c757d', marginTop: '0.5rem' }}>
+                      💡 この権限を付与するには、AWS Cognito User Poolで「content-manager」という名前のグループを作成し、
+                      ユーザーを「editor」グループと「content-manager」グループの両方に追加してください。
+                      または、admin権限を付与してください。
+                    </p>
+                  </div>
+                }
+              >
+                <div className="card" style={{ marginTop: '1rem', backgroundColor: '#f0e6ff' }}>
+                  <h3>editorかつcontent-manager専用コンテンツ（複数権限 - AND条件）</h3>
+                  <p>
+                    このコンテンツは以下の条件を満たすユーザーのみが閲覧できます：
+                  </p>
+                  <ul>
+                    <li>editor権限<strong>かつ</strong>content-managerグループに属している</li>
+                    <li>または、admin権限を持っている（それより上の権限）</li>
+                  </ul>
+                  <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#ffffff', borderRadius: '4px' }}>
+                    <h4>このコンテンツで実行できる操作</h4>
+                    <ul>
+                      <li>コンテンツの作成・編集・削除</li>
+                      <li>コンテンツ管理機能の使用</li>
+                      <li>高度な編集機能へのアクセス</li>
+                    </ul>
+                  </div>
                 </div>
               </ProtectedContent>
             </div>
@@ -231,6 +314,13 @@ export default function DashboardPage() {
               <p>
                 💡 <strong>ヒント:</strong> User Poolの設定（グループの追加・削除など）が変更された場合、
                 「権限情報を更新」ボタンをクリックして最新の情報を取得してください。
+              </p>
+              <p style={{ marginTop: '0.5rem' }}>
+                📖 <strong>カスタム権限の付与方法:</strong>{' '}
+                <a href="/admin" style={{ color: '#0070f3', textDecoration: 'underline' }}>
+                  管理者ページ
+                </a>
+                でカスタム権限の使用例を確認できます。
               </p>
             </div>
           </div>

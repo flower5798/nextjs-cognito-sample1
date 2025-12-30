@@ -1,11 +1,21 @@
 'use client';
 
 import { ReactNode, useEffect, useState } from 'react';
-import { hasPermission, Permission } from '@/lib/permissions';
+import {
+  hasPermission,
+  hasPermissionNameOrHigher,
+  hasGroupOrHigher,
+  Permission,
+} from '@/lib/permissions';
 
 interface PermissionButtonProps {
   children: ReactNode;
-  requiredPermission: Permission;
+  // 権限チェック方法1: 定義済みの権限タイプを使用
+  requiredPermission?: Permission;
+  // 権限チェック方法2: カスタム権限名（文字列）を使用
+  requiredPermissionName?: string;
+  // 権限チェック方法3: グループ名を使用
+  requiredGroupName?: string;
   onClick: () => void | Promise<void>;
   className?: string;
   disabled?: boolean;
@@ -14,10 +24,17 @@ interface PermissionButtonProps {
 
 /**
  * 権限に基づいてボタンの有効/無効を制御するコンポーネント
+ * 
+ * 使用例:
+ * - 定義済みの権限: <PermissionButton requiredPermission="editor">...</PermissionButton>
+ * - カスタム権限名: <PermissionButton requiredPermissionName="content-manager">...</PermissionButton>
+ * - グループ名: <PermissionButton requiredGroupName="editors">...</PermissionButton>
  */
 export default function PermissionButton({
   children,
   requiredPermission,
+  requiredPermissionName,
+  requiredGroupName,
   onClick,
   className = 'btn btn-primary',
   disabled: externalDisabled = false,
@@ -28,13 +45,34 @@ export default function PermissionButton({
 
   useEffect(() => {
     const checkPermission = async () => {
-      const hasPerm = await hasPermission(requiredPermission);
+      let hasPerm = false;
+
+      // 権限チェック方法1: 定義済みの権限タイプ
+      if (requiredPermission) {
+        hasPerm = await hasPermission(requiredPermission);
+      }
+      // 権限チェック方法2: カスタム権限名（文字列）
+      else if (requiredPermissionName) {
+        hasPerm = await hasPermissionNameOrHigher(requiredPermissionName);
+      }
+      // 権限チェック方法3: グループ名
+      else if (requiredGroupName) {
+        hasPerm = await hasGroupOrHigher(requiredGroupName);
+      }
+      // いずれも指定されていない場合はエラー
+      else {
+        console.error(
+          'PermissionButton: requiredPermission, requiredPermissionName, または requiredGroupName のいずれかを指定してください'
+        );
+        hasPerm = false;
+      }
+
       setHasAccess(hasPerm);
       setLoading(false);
     };
 
     checkPermission();
-  }, [requiredPermission]);
+  }, [requiredPermission, requiredPermissionName, requiredGroupName]);
 
   const isDisabled = externalDisabled || !hasAccess || loading;
 
@@ -60,7 +98,13 @@ export default function PermissionButton({
         disabled={isDisabled}
         title={
           !hasAccess
-            ? disabledMessage || `この操作には${requiredPermission}権限が必要です`
+            ? disabledMessage ||
+              `この操作には${
+                requiredPermission ||
+                requiredPermissionName ||
+                requiredGroupName ||
+                '指定された権限'
+              }権限（またはそれ以上の権限）が必要です`
             : undefined
         }
       >

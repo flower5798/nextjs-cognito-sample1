@@ -10,6 +10,10 @@
 - 認証状態の管理
 - **権限管理機能（AWS Cognito User Groupsを使用）**
   - ユーザーごとの権限設定
+  - 階層的な権限チェック（レベル別）
+  - 特定の権限名を明示的にチェック（カスタム権限名、グループ名対応）
+  - 「この権限以上」の判定機能
+  - 複数の権限名のいずれかをチェック
   - 権限に基づいた操作の制限
   - 権限に基づいたコンテンツの表示/非表示
 
@@ -32,6 +36,8 @@ npm install
 - [COGNITO_DUAL_CLIENT_SETUP.md](./COGNITO_DUAL_CLIENT_SETUP.md) - Public ClientとConfidential Clientの併用設定
 - [ENV_SETUP.md](./ENV_SETUP.md) - 環境変数の設定方法
 - [PERMISSIONS_SETUP.md](./PERMISSIONS_SETUP.md) - 権限管理機能の設定方法
+- [PERMISSIONS_ADVANCED.md](./PERMISSIONS_ADVANCED.md) - 高度な権限管理機能（カスタム権限名、グループ名対応）
+- [TOKEN_REFRESH.md](./TOKEN_REFRESH.md) - トークンリフレッシュと権限情報の更新
 
 `.env.local`の例：
 
