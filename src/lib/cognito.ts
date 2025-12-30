@@ -210,12 +210,65 @@ export const getCurrentUserInfo = async () => {
   }
 };
 
-// 認証セッションを取得
-export const getAuthSession = async () => {
+// ユーザー情報と権限情報を取得
+// @param forceRefresh - trueの場合、トークンを強制的にリフレッシュして最新の情報を取得
+export const getUserInfoWithPermissions = async (forceRefresh: boolean = false) => {
   try {
-    const session = await fetchAuthSession();
+    const user = await getCurrentUser();
+    const session = await fetchAuthSession({ forceRefresh });
+    
+    let groups: string[] = [];
+    if (session.tokens?.idToken) {
+      try {
+        const idToken = session.tokens.idToken;
+        const tokenParts = idToken.toString().split('.');
+        if (tokenParts.length === 3) {
+          // ブラウザ環境でも動作するようにbase64デコード
+          const base64Url = tokenParts[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split('')
+              .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+              .join('')
+          );
+          const payload = JSON.parse(jsonPayload);
+          groups = payload['cognito:groups'] || [];
+          groups = Array.isArray(groups) ? groups : [];
+        }
+      } catch (tokenError) {
+        console.error('トークンの解析に失敗しました:', tokenError);
+      }
+    }
+
+    return {
+      success: true,
+      user,
+      groups,
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message, groups: [] };
+  }
+};
+
+// 認証セッションを取得
+export const getAuthSession = async (forceRefresh: boolean = false) => {
+  try {
+    const session = await fetchAuthSession({ forceRefresh });
     return { success: true, session };
   } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+};
+
+// トークンをリフレッシュして、最新の権限情報を取得
+export const refreshTokens = async () => {
+  try {
+    // トークンを強制的にリフレッシュ
+    const session = await fetchAuthSession({ forceRefresh: true });
+    return { success: true, session };
+  } catch (error: any) {
+    console.error('トークンのリフレッシュに失敗しました:', error);
     return { success: false, error: error.message };
   }
 };
