@@ -204,3 +204,5 @@ COGNITO_USER_POOL_CLIENT_SECRET=your-secret-key-here
 - [AWS Amplify Authentication ドキュメント](https://docs.amplify.aws/react/build-a-backend/auth/)
 - [Next.js Environment Variables ドキュメント](https://nextjs.org/docs/app/building-your-application/configuring/environment-variables)
 
+
+

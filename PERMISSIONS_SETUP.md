@@ -195,3 +195,5 @@ const PERMISSION_LEVELS: Record<Permission, number> = {
 - [AWS Cognito User Groups](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-user-groups.html)
 - [IDトークンのクレーム](https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-with-identity-providers.html)
 
+
+

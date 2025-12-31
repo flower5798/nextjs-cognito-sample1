@@ -130,3 +130,5 @@ NEXT_PUBLIC_COGNITO_REGION=ap-northeast-1
 - [COGNITO_SETUP.md](./COGNITO_SETUP.md) - User Poolの設定手順
 - [COGNITO_DUAL_CLIENT_SETUP.md](./COGNITO_DUAL_CLIENT_SETUP.md) - Public ClientとConfidential Clientの併用設定
 
+
+

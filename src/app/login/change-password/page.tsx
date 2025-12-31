@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, FormEvent, useEffect } from 'react';
+import { useState, FormEvent, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { completeNewPassword } from '@/lib/cognito';
 import Link from 'next/link';
 
-export default function ChangePasswordPage() {
+// useSearchParamsを使用するコンポーネントを分離
+function ChangePasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [newPassword, setNewPassword] = useState('');
@@ -142,6 +143,30 @@ export default function ChangePasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ローディング表示コンポーネント
+function LoadingFallback() {
+  return (
+    <div className="container">
+      <div style={{ maxWidth: '450px', margin: '0 auto' }}>
+        <div className="card">
+          <div style={{ textAlign: 'center', padding: '2rem' }}>
+            <p>読み込み中...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// メインページコンポーネント（Suspenseでラップ）
+export default function ChangePasswordPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <ChangePasswordForm />
+    </Suspense>
   );
 }
 

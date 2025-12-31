@@ -79,3 +79,5 @@ COGNITO_USER_POOL_CLIENT_SECRET=secret-key
 - [Next.js Environment Variables](https://nextjs.org/docs/app/building-your-application/configuring/environment-variables)
 - [AWS Cognito User Pool Clients](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-settings-client-apps.html)
 
+
+

@@ -293,3 +293,5 @@ console.log('権限情報:', permissions);
 - [PERMISSIONS_ADVANCED.md](./PERMISSIONS_ADVANCED.md) - 高度な権限管理機能
 - [AWS Cognito User Groups](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-user-groups.html)
 
+
+

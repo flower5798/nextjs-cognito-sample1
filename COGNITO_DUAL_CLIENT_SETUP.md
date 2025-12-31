@@ -158,3 +158,5 @@ NEXT_PUBLIC_COGNITO_REGION=ap-northeast-1
 - [AWS Cognito User Pool Clients](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-settings-client-apps.html)
 - [COGNITO_SETUP.md](./COGNITO_SETUP.md) - 基本的な設定手順
 
+
+

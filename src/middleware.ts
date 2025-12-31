@@ -7,6 +7,11 @@ import type { NextRequest } from 'next/server';
 const PROTECTED_PATHS = ['/dashboard', '/profile', '/admin'];
 
 /**
+ * 認証済みの場合にリダイレクトするパスを定義（ログインページなど）
+ */
+const AUTH_REDIRECT_PATHS = ['/login'];
+
+/**
  * Base64URLをデコード（Edge Runtime対応）
  */
 function base64UrlDecode(str: string): string {
@@ -72,6 +77,30 @@ export function middleware(request: NextRequest) {
     path => pathname === path || pathname.startsWith(path + '/')
   );
   
+  // 認証済みの場合にリダイレクトするパスかどうかをチェック
+  const isAuthRedirectPath = AUTH_REDIRECT_PATHS.some(
+    path => pathname === path || pathname.startsWith(path + '/')
+  );
+  
+  // 認証済みの場合にログインページからダッシュボードにリダイレクト
+  if (isAuthRedirectPath) {
+    const accessToken = request.cookies.get('accessToken')?.value;
+    const idToken = request.cookies.get('idToken')?.value;
+    
+    if (accessToken && idToken) {
+      // トークンが存在する場合は有効性をチェック
+      const accessValidation = validateToken(accessToken);
+      const idValidation = validateToken(idToken);
+      
+      if (accessValidation.valid && idValidation.valid) {
+        // 認証済みの場合はダッシュボードにリダイレクト
+        return NextResponse.redirect(new URL('/dashboard', request.url));
+      }
+    }
+    
+    return NextResponse.next();
+  }
+  
   if (!isProtectedPath) {
     return NextResponse.next();
   }
@@ -126,6 +155,8 @@ export const config = {
     '/dashboard/:path*',
     '/profile/:path*',
     '/admin/:path*',
+    '/login/:path*',
+    '/login',
   ],
 };
 
