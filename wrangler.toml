@@ -7,10 +7,11 @@
 # - wrangler.tomlの[vars]セクションは使用しません（ローカル開発時のみ使用可能）
 
 name = "nextjs-cognito-sample"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
 
 # Node.js互換性フラグ（@cloudflare/next-on-pagesに必要）
-compatibility_flags = ["nodejs_compat"]
+# nodejs_compat_v2はasync_hooksを含むより多くのNode.js APIをサポート
+compatibility_flags = ["nodejs_compat_v2"]
 
 # Pages用の設定
 pages_build_output_dir = ".vercel/output/static"
