@@ -96,6 +96,9 @@ export default function LoginPage() {
             </button>
           </form>
           <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+            <Link href="/login/reset-password">パスワードをお忘れの方</Link>
+          </div>
+          <div style={{ marginTop: '0.5rem', textAlign: 'center' }}>
             <Link href="/">ホームに戻る</Link>
           </div>
         </div>

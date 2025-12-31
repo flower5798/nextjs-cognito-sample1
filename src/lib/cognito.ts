@@ -1,5 +1,5 @@
 import { Amplify } from 'aws-amplify';
-import { signIn, signOut, getCurrentUser, fetchAuthSession, confirmSignIn, updatePassword } from 'aws-amplify/auth';
+import { signIn, signOut, getCurrentUser, fetchAuthSession, confirmSignIn, updatePassword, resetPassword, confirmResetPassword } from 'aws-amplify/auth';
 import { getEnvConfig } from './env';
 
 // Amplifyの設定
@@ -414,6 +414,8 @@ export const completeNewPassword = async (newPassword: string) => {
     });
 
     if (isSignedIn) {
+      // パスワード変更成功後、HttpOnly Cookieを設定（ミドルウェアでの認証用）
+      await setCookiesAfterAmplifyLogin();
       return { success: true };
     }
 
@@ -494,6 +496,123 @@ export const changePassword = async (oldPassword: string, newPassword: string) =
     return { 
       success: false, 
       error: error.message || 'パスワードの変更に失敗しました' 
+    };
+  }
+};
+
+/**
+ * パスワードリセットを開始する（確認コードをメールで送信）
+ * @param email - ユーザーのメールアドレス
+ */
+export const initiatePasswordReset = async (email: string) => {
+  try {
+    const output = await resetPassword({ username: email });
+    
+    return { 
+      success: true, 
+      nextStep: output.nextStep,
+      codeDeliveryDetails: output.nextStep.codeDeliveryDetails
+    };
+  } catch (error: any) {
+    console.error('パスワードリセット開始エラー:', error);
+    
+    // ユーザーが存在しない場合でも、セキュリティのため同じメッセージを返す
+    if (error.name === 'UserNotFoundException') {
+      return { 
+        success: true, 
+        message: '登録されているメールアドレスに確認コードを送信しました'
+      };
+    }
+    
+    // ユーザーが確認されていない場合
+    if (error.name === 'InvalidParameterException' && error.message?.includes('confirmed')) {
+      return { 
+        success: false, 
+        error: 'このアカウントはまだ確認されていません。管理者にお問い合わせください。' 
+      };
+    }
+    
+    // 試行回数制限
+    if (error.name === 'LimitExceededException') {
+      return { 
+        success: false, 
+        error: 'リセットの試行回数が制限を超えました。しばらくしてから再度お試しください。' 
+      };
+    }
+    
+    // その他のエラー
+    return { 
+      success: false, 
+      error: error.message || 'パスワードリセットの開始に失敗しました' 
+    };
+  }
+};
+
+/**
+ * パスワードリセットを完了する（確認コードと新しいパスワードで）
+ * @param email - ユーザーのメールアドレス
+ * @param confirmationCode - メールで受け取った確認コード
+ * @param newPassword - 新しいパスワード
+ */
+export const completePasswordReset = async (
+  email: string, 
+  confirmationCode: string, 
+  newPassword: string
+) => {
+  try {
+    await confirmResetPassword({ 
+      username: email, 
+      confirmationCode, 
+      newPassword 
+    });
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('パスワードリセット完了エラー:', error);
+    
+    // 確認コードが無効または期限切れ
+    if (error.name === 'CodeMismatchException') {
+      return { 
+        success: false, 
+        error: '確認コードが正しくありません。再度ご確認ください。' 
+      };
+    }
+    
+    if (error.name === 'ExpiredCodeException') {
+      return { 
+        success: false, 
+        error: '確認コードの有効期限が切れています。再度リセットを開始してください。' 
+      };
+    }
+    
+    // パスワードポリシーエラー
+    if (error.name === 'InvalidPasswordException') {
+      return { 
+        success: false, 
+        error: 'パスワードがポリシーを満たしていません。8文字以上で、大文字・小文字・数字・記号を含めてください。' 
+      };
+    }
+    
+    // 試行回数制限
+    if (error.name === 'LimitExceededException') {
+      return { 
+        success: false, 
+        error: 'リセットの試行回数が制限を超えました。しばらくしてから再度お試しください。' 
+      };
+    }
+    
+    // ユーザーが存在しない
+    if (error.name === 'UserNotFoundException') {
+      return { 
+        success: false, 
+        error: 'ユーザーが見つかりません。メールアドレスを確認してください。' 
+      };
+    }
+    
+    // その他のエラー
+    return { 
+      success: false, 
+      error: error.message || 'パスワードのリセットに失敗しました' 
     };
   }
 };
