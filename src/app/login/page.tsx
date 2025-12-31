@@ -39,8 +39,10 @@ export default function LoginPage() {
     const result = await login(email, password);
 
     if (result.success) {
-      router.push(redirectTo);
-      router.refresh();
+      // ログアウト直後の再ログイン時にキャッシュの問題を回避するため、
+      // フルページリロードでリダイレクトする
+      window.location.href = redirectTo;
+      return;
     } else if (result.requiresNewPassword) {
       // 初回ログイン時のパスワード変更が必要な場合
       const changePasswordUrl = `/login/change-password?redirect=${encodeURIComponent(redirectTo)}`;

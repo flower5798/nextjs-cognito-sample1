@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentUserInfo, logout } from '@/lib/cognito';
 import Navbar from '@/components/Navbar';
+import Link from 'next/link';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -53,6 +54,17 @@ export default function ProfilePage() {
               <p>
                 <strong>ユーザーID:</strong> {user.userId}
               </p>
+              
+              <div style={{ marginTop: '2rem' }}>
+                <h2>セキュリティ設定</h2>
+                <Link 
+                  href="/profile/change-password"
+                  className="btn btn-primary"
+                  style={{ display: 'inline-block', marginTop: '0.5rem' }}
+                >
+                  パスワードを変更
+                </Link>
+              </div>
             </div>
           )}
         </div>

@@ -68,8 +68,10 @@ function ChangePasswordForm() {
     const result = await completeNewPassword(newPassword);
 
     if (result.success) {
-      router.push(redirectTo);
-      router.refresh();
+      // ログアウト直後の再ログイン時にキャッシュの問題を回避するため、
+      // フルページリロードでリダイレクトする
+      window.location.href = redirectTo;
+      return;
     } else {
       setError(result.error || 'パスワードの変更に失敗しました');
       setLoading(false);

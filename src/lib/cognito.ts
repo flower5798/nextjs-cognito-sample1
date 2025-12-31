@@ -1,5 +1,5 @@
 import { Amplify } from 'aws-amplify';
-import { signIn, signOut, getCurrentUser, fetchAuthSession, confirmSignIn } from 'aws-amplify/auth';
+import { signIn, signOut, getCurrentUser, fetchAuthSession, confirmSignIn, updatePassword } from 'aws-amplify/auth';
 import { getEnvConfig } from './env';
 
 // Amplifyの設定
@@ -129,11 +129,57 @@ export interface LoginResult {
   nextStep?: any;
 }
 
+/**
+ * Amplifyログイン成功後にHttpOnly Cookieを設定する
+ * ミドルウェアでの認証に必要
+ */
+const setCookiesAfterAmplifyLogin = async (): Promise<boolean> => {
+  try {
+    const session = await fetchAuthSession();
+    if (!session.tokens) {
+      return false;
+    }
+
+    const accessToken = session.tokens.accessToken?.toString();
+    const idToken = session.tokens.idToken?.toString();
+
+    if (!accessToken || !idToken) {
+      return false;
+    }
+
+    const response = await fetch('/api/auth/set-cookies', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        accessToken,
+        idToken,
+        expiresIn: 3600, // 1時間
+      }),
+    });
+
+    const result = await response.json();
+    return result.success;
+  } catch (error) {
+    console.error('Cookie設定エラー:', error);
+    return false;
+  }
+};
+
 // ログイン関数
 // まずPublic Clientを使用してクライアントサイドで直接ログインを試みます
 // 失敗した場合（SECRET_HASHエラー、CSPエラーなど）は、自動的にサーバーサイドAPI経由でログインします
 export const login = async (email: string, password: string): Promise<LoginResult> => {
   try {
+    // ログイン前に既存のセッションをクリア（ログアウト直後の再ログイン問題を回避）
+    try {
+      await signOut();
+    } catch {
+      // サインアウトに失敗しても続行（セッションがない場合など）
+    }
+    
     // Public Client（シークレットなし）を使用してクライアントサイドで直接ログインを試みる
     const { isSignedIn, nextStep } = await signIn({
       username: email,
@@ -141,6 +187,8 @@ export const login = async (email: string, password: string): Promise<LoginResul
     });
     
     if (isSignedIn) {
+      // Amplifyログイン成功後、HttpOnly Cookieを設定（ミドルウェアでの認証用）
+      await setCookiesAfterAmplifyLogin();
       return { success: true };
     }
     
@@ -387,6 +435,58 @@ export const completeNewPassword = async (newPassword: string) => {
       return { 
         success: false, 
         error: 'パスワードがポリシーを満たしていません。8文字以上で、大文字・小文字・数字・記号を含めてください。' 
+      };
+    }
+    
+    // その他のエラー
+    return { 
+      success: false, 
+      error: error.message || 'パスワードの変更に失敗しました' 
+    };
+  }
+};
+
+/**
+ * ログイン済みユーザーのパスワードを変更する
+ * @param oldPassword - 現在のパスワード
+ * @param newPassword - 新しいパスワード
+ */
+export const changePassword = async (oldPassword: string, newPassword: string) => {
+  try {
+    await updatePassword({ oldPassword, newPassword });
+    return { success: true };
+  } catch (error: any) {
+    console.error('パスワード変更エラー:', error);
+    
+    // 現在のパスワードが間違っている場合
+    if (error.name === 'NotAuthorizedException') {
+      return { 
+        success: false, 
+        error: '現在のパスワードが正しくありません' 
+      };
+    }
+    
+    // パスワードポリシーエラーの場合
+    if (error.name === 'InvalidPasswordException') {
+      return { 
+        success: false, 
+        error: 'パスワードがポリシーを満たしていません。8文字以上で、大文字・小文字・数字・記号を含めてください。' 
+      };
+    }
+    
+    // セッションが切れている場合
+    if (error.name === 'UserUnAuthenticatedException' || error.message?.includes('not authenticated')) {
+      return { 
+        success: false, 
+        error: 'セッションが切れています。再度ログインしてください。' 
+      };
+    }
+    
+    // パスワード試行回数制限
+    if (error.name === 'LimitExceededException') {
+      return { 
+        success: false, 
+        error: 'パスワード変更の試行回数が制限を超えました。しばらくしてから再度お試しください。' 
       };
     }
     
