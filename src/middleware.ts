@@ -12,6 +12,11 @@ const PROTECTED_PATHS = ['/dashboard', '/profile', '/admin'];
 const AUTH_REDIRECT_PATHS = ['/login'];
 
 /**
+ * AUTH_REDIRECT_PATHSから除外するパス（認証済みでもアクセス可能）
+ */
+const AUTH_REDIRECT_EXCLUDE_PATHS = ['/login/verify-email'];
+
+/**
  * Base64URLをデコード（Edge Runtime対応）
  */
 function base64UrlDecode(str: string): string {
@@ -82,8 +87,13 @@ export function middleware(request: NextRequest) {
     path => pathname === path || pathname.startsWith(path + '/')
   );
   
-  // 認証済みの場合にログインページからダッシュボードにリダイレクト
-  if (isAuthRedirectPath) {
+  // 除外パスかどうかをチェック（メール確認ページなど、認証済みでもアクセス可能）
+  const isExcludedPath = AUTH_REDIRECT_EXCLUDE_PATHS.some(
+    path => pathname === path || pathname.startsWith(path + '/')
+  );
+  
+  // 認証済みの場合にログインページからダッシュボードにリダイレクト（除外パスを除く）
+  if (isAuthRedirectPath && !isExcludedPath) {
     const accessToken = request.cookies.get('accessToken')?.value;
     const idToken = request.cookies.get('idToken')?.value;
     

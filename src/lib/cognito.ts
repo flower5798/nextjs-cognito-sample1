@@ -1,5 +1,5 @@
 import { Amplify } from 'aws-amplify';
-import { signIn, signOut, getCurrentUser, fetchAuthSession, confirmSignIn, updatePassword, resetPassword, confirmResetPassword } from 'aws-amplify/auth';
+import { signIn, signOut, getCurrentUser, fetchAuthSession, confirmSignIn, updatePassword, resetPassword, confirmResetPassword, sendUserAttributeVerificationCode, confirmUserAttribute, fetchUserAttributes } from 'aws-amplify/auth';
 import { getEnvConfig } from './env';
 
 // Amplifyの設定
@@ -405,8 +405,14 @@ export const isAuthenticated = async (): Promise<boolean> => {
  * 新しいパスワードを設定して認証を完了する
  * 初回ログイン時のパスワード変更に使用
  * @param newPassword - 新しいパスワード
+ * @returns success, emailVerified（メールアドレスが確認済みかどうか）を含むオブジェクト
  */
-export const completeNewPassword = async (newPassword: string) => {
+export const completeNewPassword = async (newPassword: string): Promise<{
+  success: boolean;
+  error?: string;
+  emailVerified?: boolean;
+  nextStep?: any;
+}> => {
   try {
     // confirmSignInを使用して新しいパスワードを設定
     const { isSignedIn, nextStep } = await confirmSignIn({
@@ -416,7 +422,19 @@ export const completeNewPassword = async (newPassword: string) => {
     if (isSignedIn) {
       // パスワード変更成功後、HttpOnly Cookieを設定（ミドルウェアでの認証用）
       await setCookiesAfterAmplifyLogin();
-      return { success: true };
+      
+      // メールアドレスが確認済みかチェック
+      let emailVerified = false;
+      try {
+        const attributes = await fetchUserAttributes();
+        emailVerified = attributes.email_verified === 'true';
+      } catch (attrError) {
+        console.error('ユーザー属性の取得エラー:', attrError);
+        // 属性取得に失敗した場合は未確認として扱う
+        emailVerified = false;
+      }
+      
+      return { success: true, emailVerified };
     }
 
     // 追加のステップが必要な場合
@@ -613,6 +631,101 @@ export const completePasswordReset = async (
     return { 
       success: false, 
       error: error.message || 'パスワードのリセットに失敗しました' 
+    };
+  }
+};
+
+/**
+ * メールアドレスが確認済みかどうかをチェック
+ * @returns email_verified属性の状態
+ */
+export const checkEmailVerified = async (): Promise<{ verified: boolean; email?: string; error?: string }> => {
+  try {
+    const attributes = await fetchUserAttributes();
+    const email = attributes.email;
+    const emailVerified = attributes.email_verified === 'true';
+    
+    return { 
+      verified: emailVerified, 
+      email 
+    };
+  } catch (error: any) {
+    console.error('メール確認状態の取得エラー:', error);
+    return { 
+      verified: false, 
+      error: error.message || 'メール確認状態の取得に失敗しました' 
+    };
+  }
+};
+
+/**
+ * メールアドレス確認コードを送信
+ */
+export const sendEmailVerificationCode = async () => {
+  try {
+    await sendUserAttributeVerificationCode({ userAttributeKey: 'email' });
+    return { success: true };
+  } catch (error: any) {
+    console.error('確認コード送信エラー:', error);
+    
+    // 試行回数制限
+    if (error.name === 'LimitExceededException') {
+      return { 
+        success: false, 
+        error: '確認コード送信の試行回数が制限を超えました。しばらくしてから再度お試しください。' 
+      };
+    }
+    
+    // その他のエラー
+    return { 
+      success: false, 
+      error: error.message || '確認コードの送信に失敗しました' 
+    };
+  }
+};
+
+/**
+ * メールアドレス確認コードを検証
+ * @param confirmationCode - メールで受け取った確認コード
+ */
+export const verifyEmailCode = async (confirmationCode: string) => {
+  try {
+    await confirmUserAttribute({ 
+      userAttributeKey: 'email', 
+      confirmationCode 
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.error('メール確認エラー:', error);
+    
+    // 確認コードが無効
+    if (error.name === 'CodeMismatchException') {
+      return { 
+        success: false, 
+        error: '確認コードが正しくありません。再度ご確認ください。' 
+      };
+    }
+    
+    // 確認コードの有効期限切れ
+    if (error.name === 'ExpiredCodeException') {
+      return { 
+        success: false, 
+        error: '確認コードの有効期限が切れています。再送信してください。' 
+      };
+    }
+    
+    // 試行回数制限
+    if (error.name === 'LimitExceededException') {
+      return { 
+        success: false, 
+        error: '試行回数が制限を超えました。しばらくしてから再度お試しください。' 
+      };
+    }
+    
+    // その他のエラー
+    return { 
+      success: false, 
+      error: error.message || 'メールアドレスの確認に失敗しました' 
     };
   }
 };

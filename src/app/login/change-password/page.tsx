@@ -68,9 +68,9 @@ function ChangePasswordForm() {
     const result = await completeNewPassword(newPassword);
 
     if (result.success) {
-      // ログアウト直後の再ログイン時にキャッシュの問題を回避するため、
-      // フルページリロードでリダイレクトする
-      window.location.href = redirectTo;
+      // 初回パスワード変更後は常にメール確認ページに遷移
+      // メール確認ページで確認済みかどうかをチェックし、確認済みならダッシュボードにリダイレクト
+      window.location.href = `/login/verify-email?redirect=${encodeURIComponent(redirectTo)}`;
       return;
     } else {
       setError(result.error || 'パスワードの変更に失敗しました');
