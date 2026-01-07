@@ -4,30 +4,50 @@ import { getEnvConfig } from './env';
 
 // Amplifyの設定
 // クライアントサイドでPublic Clientを使用して認証を行います
+// Amplifyが既に設定されているかチェック
+let isAmplifyConfigured = false;
+
 export const configureAmplify = () => {
   if (typeof window === 'undefined') {
     // サーバーサイドでは設定しない
     return;
   }
 
+  // 既に設定されている場合はスキップ
+  if (isAmplifyConfigured) {
+    return;
+  }
+
   // .envファイルが存在する場合はそこから、存在しない場合は環境変数から値を取得
   const config = getEnvConfig();
 
+  // 設定値の検証
+  if (!config.userPoolId || !config.userPoolClientId) {
+    console.error('❌ configureAmplify: 設定値が不足しています', config);
+    return;
+  }
+
   // Amplify v6では、regionはuserPoolIdから自動的に推測されます
   // Public Client（シークレットなし）を使用してクライアントサイドで直接認証
-  Amplify.configure({
-    Auth: {
-      Cognito: {
-        userPoolId: config.userPoolId,
-        userPoolClientId: config.userPoolClientId, // Public Client ID
-        loginWith: {
-          email: true,
-        },
+  try {
+    Amplify.configure({
+      Auth: {
+        Cognito: {
+          userPoolId: config.userPoolId,
+          userPoolClientId: config.userPoolClientId, // Public Client ID
+          loginWith: {
+            email: true,
+          },
+        }
       }
-    }
-  }, { 
-    ssr: true,
-  });
+    }, { 
+      ssr: true,
+    });
+    
+    isAmplifyConfigured = true;
+  } catch (error) {
+    console.error('❌ configureAmplify: 設定に失敗しました', error);
+  }
 };
 
 // 認証エラーかどうかを判定する関数
@@ -73,37 +93,9 @@ const loginViaServerAPI = async (email: string, password: string) => {
     const result = await response.json();
     
     if (result.success && result.tokens) {
-      // Amplifyのセッション管理との互換性のため、localStorageにもトークンを保存
-      if (typeof window !== 'undefined') {
-        try {
-          const config = getEnvConfig();
-          const storageKey = `CognitoIdentityServiceProvider.${config.userPoolClientId}`;
-          localStorage.setItem(`${storageKey}.LastAuthUser`, email);
-          localStorage.setItem(`${storageKey}.${email}.accessToken`, result.tokens.accessToken);
-          localStorage.setItem(`${storageKey}.${email}.idToken`, result.tokens.idToken);
-          if (result.tokens.refreshToken) {
-            localStorage.setItem(`${storageKey}.${email}.refreshToken`, result.tokens.refreshToken);
-          }
-          
-          // トークンの有効期限を保存
-          if (result.tokens.expiresIn) {
-            const expiresAt = Date.now() + (result.tokens.expiresIn * 1000);
-            localStorage.setItem(`${storageKey}.${email}.clockDrift`, '0');
-            localStorage.setItem(`${storageKey}.${email}.tokenExpiration`, expiresAt.toString());
-          }
-          
-          // 少し待ってからAmplifyのセッションを再取得して認証状態を更新
-          setTimeout(async () => {
-            try {
-              await fetchAuthSession({ forceRefresh: true });
-            } catch (sessionError) {
-              console.error('セッションの更新に失敗しました:', sessionError);
-            }
-          }, 100);
-        } catch (storageError) {
-          console.error('トークンの保存に失敗しました:', storageError);
-        }
-      }
+      // サーバーサイドAPIは既にCookieにConfidential Clientのトークンを設定している
+      // Public Clientのトークンは既にlocalStorageに保存されている（Amplifyの機能用）
+      // 両方のトークンを保持することで、用途に応じて使い分けできる
       return { success: true };
     }
     
@@ -169,10 +161,16 @@ const setCookiesAfterAmplifyLogin = async (): Promise<boolean> => {
 };
 
 // ログイン関数
-// まずPublic Clientを使用してクライアントサイドで直接ログインを試みます
-// 失敗した場合（SECRET_HASHエラー、CSPエラーなど）は、自動的にサーバーサイドAPI経由でログインします
+// Public ClientとConfidential Clientの両方のトークンを取得します
+// - Public Clientのトークン: Amplifyの機能（メール確認チェックなど）に使用
+// - Confidential Clientのトークン: API Gatewayへのリクエストに使用
 export const login = async (email: string, password: string): Promise<LoginResult> => {
   try {
+    // Amplifyの設定を確認（既に設定されている可能性があるため、再設定はスキップされる）
+    if (typeof window !== 'undefined') {
+      configureAmplify();
+    }
+    
     // ログイン前に既存のセッションをクリア（ログアウト直後の再ログイン問題を回避）
     try {
       await signOut();
@@ -180,16 +178,28 @@ export const login = async (email: string, password: string): Promise<LoginResul
       // サインアウトに失敗しても続行（セッションがない場合など）
     }
     
-    // Public Client（シークレットなし）を使用してクライアントサイドで直接ログインを試みる
+    // まずPublic Client（シークレットなし）を使用してクライアントサイドで直接ログインを試みる
+    // これにより、Amplifyの機能（メール確認チェックなど）が正常に動作する
     const { isSignedIn, nextStep } = await signIn({
       username: email,
       password: password,
     });
     
     if (isSignedIn) {
-      // Amplifyログイン成功後、HttpOnly Cookieを設定（ミドルウェアでの認証用）
-      await setCookiesAfterAmplifyLogin();
-      return { success: true };
+      // Public Clientのトークンは既にlocalStorageに保存されている（Amplifyが自動的に保存）
+      // 次に、サーバーサイドAPI経由でConfidential Clientのトークンも取得してCookieに保存
+      // これにより、API Gatewayへのリクエストで使用できる
+      const serverResult = await loginViaServerAPI(email, password);
+      
+      if (serverResult.success) {
+        // 両方のトークンが取得できた
+        return { success: true };
+      } else {
+        // Public Clientのログインは成功したが、Confidential Clientのトークン取得に失敗
+        // Public Clientのトークンは使用可能なので、成功として扱う
+        // （API Gatewayへのリクエストは失敗する可能性があるが、Amplifyの機能は使用可能）
+        return { success: true };
+      }
     }
     
     // 初回ログイン時のパスワード変更が必要な場合
@@ -231,7 +241,6 @@ export const login = async (email: string, password: string): Promise<LoginResul
     const fullErrorText = `${errorName} ${errorMessage} ${errorStack}`.toLowerCase();
     
     // 認証エラー（パスワード間違い、ユーザー不存在など）の場合は汎用メッセージを返す
-    // これらのエラーはサーバーAPI経由でも同じ結果になるので、フォールバック不要
     if (isAuthenticationError(errorName, errorMessage)) {
       return { success: false, error: GENERIC_AUTH_ERROR };
     }
@@ -250,13 +259,12 @@ export const login = async (email: string, password: string): Promise<LoginResul
       (fullErrorText.includes('client') && fullErrorText.includes('secret') && !fullErrorText.includes('incorrect'));
     
     if (isClientSideError) {
-      console.log('クライアントサイド認証エラー、サーバーAPI経由でログインを試みます');
+      // サーバーサイドAPI経由でログインを試みる
+      // この場合、Confidential Clientのトークンのみが取得される
       return await loginViaServerAPI(email, password);
     }
     
     // その他のエラーもサーバーサイドAPI経由で試してみる
-    // （クライアントサイドでは環境変数が読めないため、常にフォールバックを試行）
-    console.log('Amplify認証エラー、サーバーAPI経由でログインを試みます:', errorName);
     const serverResult = await loginViaServerAPI(email, password);
     
     if (serverResult.success) {
@@ -332,39 +340,103 @@ export const getCurrentUserInfo = async () => {
 // @param forceRefresh - trueの場合、トークンを強制的にリフレッシュして最新の情報を取得
 export const getUserInfoWithPermissions = async (forceRefresh: boolean = false) => {
   try {
-    const user = await getCurrentUser();
-    const session = await fetchAuthSession({ forceRefresh });
+    // Amplifyの設定を確認（既に設定されている可能性があるため、再設定はスキップされる）
+    if (typeof window !== 'undefined') {
+      configureAmplify();
+    }
     
-    let groups: string[] = [];
-    if (session.tokens?.idToken) {
-      try {
-        const idToken = session.tokens.idToken;
-        const tokenParts = idToken.toString().split('.');
-        if (tokenParts.length === 3) {
-          // ブラウザ環境でも動作するようにbase64デコード
-          const base64Url = tokenParts[1];
-          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-          const jsonPayload = decodeURIComponent(
-            atob(base64)
-              .split('')
-              .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-              .join('')
-          );
-          const payload = JSON.parse(jsonPayload);
-          groups = payload['cognito:groups'] || [];
-          groups = Array.isArray(groups) ? groups : [];
+    // fetchAuthSession()を最初に試す（Amplifyが正常に動作している場合は即座に完了する）
+    let idToken: any = null;
+    let accessToken: any = null;
+    
+    try {
+      const session = await fetchAuthSession({ forceRefresh });
+      
+      if (session.tokens?.idToken) {
+        idToken = session.tokens.idToken;
+        accessToken = session.tokens.accessToken;
+      }
+    } catch (sessionError: any) {
+      // fetchAuthSession()が失敗した場合、localStorageから取得（フォールバック）
+      if (typeof window !== 'undefined') {
+        const config = getEnvConfig();
+        const storageKey = `CognitoIdentityServiceProvider.${config.userPoolClientId}`;
+        const lastAuthUser = localStorage.getItem(`${storageKey}.LastAuthUser`);
+        
+        if (lastAuthUser) {
+          const storedIdToken = localStorage.getItem(`${storageKey}.${lastAuthUser}.idToken`);
+          const storedAccessToken = localStorage.getItem(`${storageKey}.${lastAuthUser}.accessToken`);
+          
+          if (storedIdToken && storedAccessToken) {
+            idToken = storedIdToken;
+            accessToken = storedAccessToken;
+          }
         }
-      } catch (tokenError) {
-        console.error('トークンの解析に失敗しました:', tokenError);
       }
     }
-
+    
+    if (!idToken) {
+      return { success: false, error: 'トークンが取得できませんでした', groups: [] };
+    }
+    
+    // IDトークンからユーザー情報を取得
+    let user: any = null;
+    let groups: string[] = [];
+    
+    try {
+      const tokenParts = idToken.toString().split('.');
+      if (tokenParts.length === 3) {
+        // ブラウザ環境でも動作するようにbase64デコード
+        const base64Url = tokenParts[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(
+          atob(base64)
+            .split('')
+            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join('')
+        );
+        const payload = JSON.parse(jsonPayload);
+        
+        // ユーザー情報をトークンから取得
+        user = {
+          username: payload['cognito:username'] || payload.email || payload.sub,
+          userId: payload.sub,
+          email: payload.email,
+        };
+        
+        groups = payload['cognito:groups'] || [];
+        groups = Array.isArray(groups) ? groups : [];
+      }
+    } catch (tokenError) {
+      console.error('❌ トークンの解析に失敗しました:', tokenError);
+      return { success: false, error: 'トークンの解析に失敗しました', groups: [] };
+    }
+    
+    // getCurrentUser()も試してみる（オプション）
+    try {
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('getCurrentUser()がタイムアウトしました')), 3000);
+      });
+      
+      const amplifyUser = await Promise.race([
+        getCurrentUser(),
+        timeoutPromise
+      ]) as any;
+      
+      // getCurrentUser()が成功した場合は、その情報を優先
+      if (amplifyUser) {
+        user = amplifyUser;
+      }
+    } catch (getUserError: any) {
+      // getCurrentUser()が失敗しても、トークンから情報を取得できているので続行
+    }
     return {
       success: true,
       user,
       groups,
     };
   } catch (error: any) {
+    console.error('getUserInfoWithPermissionsエラー:', error);
     return { success: false, error: error.message, groups: [] };
   }
 };
@@ -375,6 +447,35 @@ export const getAuthSession = async (forceRefresh: boolean = false) => {
     const session = await fetchAuthSession({ forceRefresh });
     return { success: true, session };
   } catch (error: any) {
+    // fetchAuthSession()が失敗した場合、localStorageから取得（フォールバック）
+    if (typeof window !== 'undefined') {
+      try {
+        const config = getEnvConfig();
+        const storageKey = `CognitoIdentityServiceProvider.${config.userPoolClientId}`;
+        const lastAuthUser = localStorage.getItem(`${storageKey}.LastAuthUser`);
+        
+        if (lastAuthUser) {
+          const storedIdToken = localStorage.getItem(`${storageKey}.${lastAuthUser}.idToken`);
+          const storedAccessToken = localStorage.getItem(`${storageKey}.${lastAuthUser}.accessToken`);
+          const storedRefreshToken = localStorage.getItem(`${storageKey}.${lastAuthUser}.refreshToken`);
+          
+          if (storedIdToken && storedAccessToken) {
+            // セッションオブジェクトを模擬
+            const session = {
+              tokens: {
+                idToken: storedIdToken,
+                accessToken: storedAccessToken,
+                refreshToken: storedRefreshToken,
+              }
+            };
+            return { success: true, session };
+          }
+        }
+      } catch (storageError) {
+        console.error('localStorageからの取得に失敗しました:', storageError);
+      }
+    }
+    
     return { success: false, error: error.message };
   }
 };

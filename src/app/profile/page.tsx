@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCurrentUserInfo, logout, checkEmailVerified } from '@/lib/cognito';
+import { getCurrentUserInfo, logout, checkEmailVerified, getAuthSession } from '@/lib/cognito';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
+
+console.log('ProfilePageaaaaa');
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -13,10 +15,13 @@ export default function ProfilePage() {
   const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
   const [email, setEmail] = useState<string>('');
 
+  console.log('ProfilePage');
   useEffect(() => {
     const fetchUserData = async () => {
       const result = await getCurrentUserInfo();
       if (result.success && result.user) {
+        
+        console.log('getCurrentUserInfo結果:', result);
         setUser(result.user);
         
         // メール確認状態をチェック
@@ -24,6 +29,29 @@ export default function ProfilePage() {
         setEmailVerified(emailStatus.verified);
         if (emailStatus.email) {
           setEmail(emailStatus.email);
+        }
+
+        // 認証トークンを取得してAPIリクエストを送信
+        try {
+          const sessionResult = await getAuthSession();
+          if (sessionResult.success && sessionResult.session?.tokens?.accessToken) {
+            const accessToken = sessionResult.session.tokens.accessToken.toString();
+            const response = await fetch('https://tq6jjrlyuf.execute-api.ap-northeast-1.amazonaws.com/content/0.md', {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+            });
+            
+            const data = await response.text();
+            console.log('APIレスポンス:', data);
+            console.log('ステータスコード:', response.status);
+          } else {
+            console.error('認証トークンの取得に失敗しました');
+          }
+        } catch (error) {
+          console.error('APIリクエストエラー:', error);
         }
       } else {
         router.push('/login');

@@ -7,6 +7,8 @@ import { getUserPermissions } from '@/lib/permissions';
 import Navbar from '@/components/Navbar';
 import ProtectedContent from '@/components/ProtectedContent';
 import PermissionButton from '@/components/PermissionButton';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -14,49 +16,113 @@ export default function DashboardPage() {
   const [groups, setGroups] = useState<string[]>([]);
   const [permissions, setPermissions] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [markdownContent, setMarkdownContent] = useState<string>('');
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
-      // 少し待ってから認証状態をチェック（トークンが設定されるのを待つ）
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      const result = await getUserInfoWithPermissions();
-      if (result.success && result.user) {
-        setUser(result.user);
-        setGroups(result.groups || []);
+      try {
+        // 少し待ってから認証状態をチェック（トークンが設定されるのを待つ）
+        await new Promise(resolve => setTimeout(resolve, 200));
         
-        // 権限情報も取得
-        const permInfo = await getUserPermissions();
-        setPermissions(permInfo);
+        const result = await getUserInfoWithPermissions();
         
-        setLoading(false);
-      } else {
-        // 認証セッションも確認してみる
-        const sessionResult = await getAuthSession();
-        if (sessionResult.success && sessionResult.session?.tokens) {
-          // セッションはあるがユーザー情報が取得できない場合、再試行
-          setTimeout(async () => {
-            const retryResult = await getUserInfoWithPermissions();
-            if (retryResult.success && retryResult.user) {
-              setUser(retryResult.user);
-              setGroups(retryResult.groups || []);
-              const permInfo = await getUserPermissions();
-              setPermissions(permInfo);
-              setLoading(false);
-            } else {
-              router.push('/login');
-              setLoading(false);
-            }
-          }, 500);
-        } else {
-          router.push('/login');
+        if (result.success && result.user) {
+          setUser(result.user);
+          setGroups(result.groups || []);
+          
+          // 権限情報も取得
+          try {
+            const permInfo = await getUserPermissions();
+            setPermissions(permInfo);
+          } catch (permError) {
+            console.error('権限情報の取得に失敗しました:', permError);
+            // 権限情報の取得に失敗しても続行
+          }
+          
           setLoading(false);
+        } else {
+          // 認証セッションも確認してみる
+          const sessionResult = await getAuthSession();
+          
+          if (sessionResult.success && sessionResult.session?.tokens) {
+            // セッションはあるがユーザー情報が取得できない場合、再試行
+            setTimeout(async () => {
+              try {
+                const retryResult = await getUserInfoWithPermissions();
+                
+                if (retryResult.success && retryResult.user) {
+                  setUser(retryResult.user);
+                  setGroups(retryResult.groups || []);
+                  try {
+                    const permInfo = await getUserPermissions();
+                    setPermissions(permInfo);
+                  } catch (permError) {
+                    console.error('権限情報の取得に失敗しました:', permError);
+                  }
+                  setLoading(false);
+                } else {
+                  router.push('/login');
+                  setLoading(false);
+                }
+              } catch (retryError) {
+                console.error('再試行エラー:', retryError);
+                router.push('/login');
+                setLoading(false);
+              }
+            }, 500);
+          } else {
+            router.push('/login');
+            setLoading(false);
+          }
         }
+      } catch (error) {
+        console.error('ユーザー情報の取得エラー:', error);
+        router.push('/login');
+        setLoading(false);
       }
     };
 
     fetchUser();
   }, [router]);
+
+  // ユーザー情報が取得できた後にAPIリクエストを送信
+  useEffect(() => {
+    const fetchContent = async () => {
+      if (!user) {
+        return;
+      }
+
+      setContentLoading(true);
+      setContentError(null);
+
+      try {
+        const response = await fetch('/api/content/0', {
+          method: 'GET',
+          credentials: 'include', // Cookieを含めるために必要
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('APIレスポンス:', result.data);
+          console.log('ステータスコード:', result.statusCode);
+          setMarkdownContent(result.data);
+        } else {
+          console.error('APIリクエストエラー:', result.error);
+          setContentError(result.error || 'コンテンツの取得に失敗しました');
+        }
+      } catch (error: any) {
+        console.error('APIリクエストエラー:', error);
+        setContentError(error.message || 'コンテンツの取得に失敗しました');
+      } finally {
+        setContentLoading(false);
+      }
+    };
+
+    fetchContent();
+  }, [user]);
 
   const handleLogout = async () => {
     await logout();
@@ -299,6 +365,35 @@ export default function DashboardPage() {
                 </div>
               </ProtectedContent>
             </div>
+          </div>
+
+          {/* Markdownコンテンツ表示 */}
+          <div style={{ marginTop: '2rem' }}>
+            <h2>コンテンツ</h2>
+            {contentLoading && (
+              <div style={{ textAlign: 'center', padding: '2rem' }}>
+                <p>コンテンツを読み込み中...</p>
+              </div>
+            )}
+            {contentError && (
+              <div className="card" style={{ marginTop: '1rem', backgroundColor: '#f8d7da', color: '#721c24' }}>
+                <p><strong>エラー:</strong> {contentError}</p>
+              </div>
+            )}
+            {!contentLoading && !contentError && markdownContent && (
+              <div className="card" style={{ marginTop: '1rem' }}>
+                <div className="markdown-content">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {markdownContent}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
+            {!contentLoading && !contentError && !markdownContent && (
+              <div className="card" style={{ marginTop: '1rem', backgroundColor: '#f8f9fa' }}>
+                <p>コンテンツがありません</p>
+              </div>
+            )}
           </div>
 
           <div style={{ marginTop: '2rem' }}>

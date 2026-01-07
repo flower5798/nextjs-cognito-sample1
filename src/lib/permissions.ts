@@ -20,15 +20,42 @@ const PERMISSION_LEVELS: Record<Permission, number> = {
  */
 export const getUserGroups = async (forceRefresh: boolean = false): Promise<string[]> => {
   try {
-    const { fetchAuthSession } = await import('aws-amplify/auth');
-    const session = await fetchAuthSession({ forceRefresh });
+    let idToken: any = null;
     
-    if (!session.tokens?.idToken) {
+    // fetchAuthSession()を最初に試す（Amplifyが正常に動作している場合は即座に完了する）
+    try {
+      const { fetchAuthSession } = await import('aws-amplify/auth');
+      const session = await fetchAuthSession({ forceRefresh });
+      
+      if (session.tokens?.idToken) {
+        idToken = session.tokens.idToken;
+      }
+    } catch (sessionError: any) {
+      // fetchAuthSession()が失敗した場合、localStorageから取得（フォールバック）
+      if (typeof window !== 'undefined') {
+        try {
+          const { getEnvConfig } = await import('@/lib/env');
+          const config = getEnvConfig();
+          const storageKey = `CognitoIdentityServiceProvider.${config.userPoolClientId}`;
+          const lastAuthUser = localStorage.getItem(`${storageKey}.LastAuthUser`);
+          
+          if (lastAuthUser) {
+            const storedIdToken = localStorage.getItem(`${storageKey}.${lastAuthUser}.idToken`);
+            if (storedIdToken) {
+              idToken = storedIdToken;
+            }
+          }
+        } catch (storageError) {
+          console.error('localStorageからの取得に失敗しました:', storageError);
+        }
+      }
+    }
+    
+    if (!idToken) {
       return [];
     }
 
     // IDトークンからクレームを取得
-    const idToken = session.tokens.idToken;
     const tokenParts = idToken.toString().split('.');
     if (tokenParts.length !== 3) {
       return [];

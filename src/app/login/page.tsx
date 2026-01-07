@@ -36,23 +36,30 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    const result = await login(email, password);
+    try {
+      const result = await login(email, password);
 
-    if (result.success) {
-      // ログアウト直後の再ログイン時にキャッシュの問題を回避するため、
-      // フルページリロードでリダイレクトする
-      window.location.href = redirectTo;
-      return;
-    } else if (result.requiresNewPassword) {
-      // 初回ログイン時のパスワード変更が必要な場合
-      const changePasswordUrl = `/login/change-password?redirect=${encodeURIComponent(redirectTo)}`;
-      router.push(changePasswordUrl);
-    } else if (result.requiresMFA) {
-      // MFAが必要な場合（将来的にMFAページを実装する場合はここで遷移）
-      setError(result.error || 'MFA認証が必要です');
-      setLoading(false);
-    } else {
-      setError(result.error || 'ログインに失敗しました');
+      if (result.success) {
+        // ログアウト直後の再ログイン時にキャッシュの問題を回避するため、
+        // フルページリロードでリダイレクトする
+        window.location.href = redirectTo;
+        return;
+      } else if (result.requiresNewPassword) {
+        // 初回ログイン時のパスワード変更が必要な場合
+        const changePasswordUrl = `/login/change-password?redirect=${encodeURIComponent(redirectTo)}`;
+        router.push(changePasswordUrl);
+      } else if (result.requiresMFA) {
+        // MFAが必要な場合（将来的にMFAページを実装する場合はここで遷移）
+        setError(result.error || 'MFA認証が必要です');
+        setLoading(false);
+      } else {
+        setError(result.error || 'ログインに失敗しました');
+        setLoading(false);
+      }
+    } catch (error: any) {
+      // 予期しないエラーが発生した場合
+      console.error('ログインエラー:', error);
+      setError(error.message || 'ログインに失敗しました');
       setLoading(false);
     }
   };
