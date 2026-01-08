@@ -11,7 +11,7 @@ export const runtime = 'edge';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ contentId: string }> | { contentId: string } }
+  { params }: { params: Promise<{ contentId: string }> }
 ) {
   try {
     const resolvedParams = await Promise.resolve(params);
